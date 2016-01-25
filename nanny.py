@@ -51,6 +51,8 @@ try:
 except:
 	REPOSITORY_KEY = None
 
+print "Using repository %s@%s:%s" % (REPOSITORY_USER, REPOSITORY_HOST, REPOSITORY_PATH)
+
 '''
 TODO: should lock the repository
  - should we just use svn or git as the repository?
@@ -303,6 +305,7 @@ def clean(client, args):
     shutil.rmtree("_deps", ignore_errors=True)
 
 def get_child_info(file_path):
+    print "Getting info for the children to be pushed"
     lines = get_substance_lines(file_path)
     def parse_pair(s):
         pair = s.split()
@@ -425,6 +428,7 @@ def stage(client, args):
     os.system("./%s %s" % (makerscript, stagedir))
 
 def push(client, args):
+    print "Setting up the push"
     child_pairs = get_child_info("CHILD")
     if len(args) == 2:
         if len(child_pairs) != 1:
@@ -441,11 +445,13 @@ def push(client, args):
 
     versionlogs = get_version_control_logs()
     makerscript = child_pairs[name]
+    print "Checking for latest version in repo..."
     curr_versions = get_versions(client, name)
     if len(curr_versions) > 0 and compare_versions(curr_versions[-1], version) >= 0:
         raise RuntimeError("Cannot deploy a less than or equal version than current version " +
                         version_to_str(curr_versions[-1]))
 
+    print "Setting up a temporary workspace and repo directories"
     shutil.rmtree("/tmp/_nanny", ignore_errors=True)
     os.mkdir("/tmp/_nanny")
     os.system("./%s /tmp/_nanny/" % makerscript)
@@ -456,19 +462,26 @@ def push(client, args):
     remote_mkdir(client, remote_tmp_path)
 
     if os.path.exists("/tmp/_nanny/NANNY"):
+        print "Sending Dependencies..."
         put(client, "/tmp/_nanny/NANNY", remote_tmp_path + "/NANNY")
         os.remove("/tmp/_nanny/NANNY")
     elif os.path.exists("NANNY"):
+        print "Sending Local Dependencies..."
         put(client, "NANNY", remote_tmp_path + "/NANNY")
 
+    print "Creating archive for transmission."
     os.system("cd /tmp/_nanny && tar czf dep.tar.gz *")
+    print "Sending archive."
     put(client, "/tmp/_nanny/dep.tar.gz", remote_tmp_path + "/dep.tar.gz")
+    print "Setting up version logs."
     if versionlogs is not None:
         spit("/tmp/_nanny/VERSIONLOGS", versionlogs)
         put(client, "/tmp/_nanny/VERSIONLOGS", remote_tmp_path + "/VERSIONLOGS")
     spit("/tmp/_nanny/PACKAGE-MSG", packagemsg)
+    print "Sending messages."
     put(client, "/tmp/_nanny/PACKAGE-MSG", remote_tmp_path + "/PACKAGE-MSG")
 
+    print "Moving from temp remote path to repo."
     remote_path = "%s/%s/%s" % (REPOSITORY_PATH, name, version_to_str(version))
     client.exec_command("mv %s %s" % (remote_tmp_path, remote_path))
 
@@ -488,9 +501,11 @@ def main():
         if command=="help":
             client = None
         else:
+            print "Setting up remote repo connection..."
             client = SSHClient()
             client.load_system_host_keys()
             client.connect(REPOSITORY_HOST, username=REPOSITORY_USER, key_filename=REPOSITORY_KEY)
+            print "Connected to repo"
 
         try:
             commands[command](client, sys.argv)

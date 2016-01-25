@@ -1,2 +1,5 @@
 .idea
 nanny.iml
+build
+dist
+nanny.egg-info/
